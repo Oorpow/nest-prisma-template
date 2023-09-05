@@ -1,17 +1,25 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
 import { PrismaModule } from 'nestjs-prisma';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { UserModule } from './user/user.module';
 
+import { UserModule } from './user/user.module';
 import { RedisModule } from './redis/redis.module';
 import { EmailModule } from './email/email.module';
+import { AuthModule } from './auth/auth.module';
+import { APP_GUARD } from '@nestjs/core';
+import { NeedLoginGuard } from './common/guard/need-login.guard';
+import { NeedPermissionGuard } from './common/guard/need-permission.guard';
 
 @Module({
   imports: [
-    UserModule,
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: '.env',
+    }),
     PrismaModule.forRoot({
       isGlobal: true,
       prismaServiceOptions: {
@@ -20,14 +28,34 @@ import { EmailModule } from './email/email.module';
         },
       },
     }),
+    JwtModule.registerAsync({
+      global: true,
+      useFactory(configService: ConfigService) {
+        return {
+          secret: configService.get('JWT_SECRET'),
+          signOptions: {
+            expiresIn: '1d',
+          },
+        };
+      },
+      inject: [ConfigService],
+    }),
+    UserModule,
     RedisModule,
     EmailModule,
-    ConfigModule.forRoot({
-      isGlobal: true,
-      envFilePath: '.env',
-    }),
+    AuthModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: NeedLoginGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: NeedPermissionGuard,
+    },
+  ],
 })
 export class AppModule {}
